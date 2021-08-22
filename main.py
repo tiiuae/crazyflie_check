@@ -17,18 +17,19 @@ colorama.init(autoreset=True)
 def_uri = "radio://0/30/2M/E7E7E7E7"
 
 drones = {
-    #"cf00": "00",
-    #"cf01": "01",
-    "cf02": "02"
-    #"cf03": "03",
-    #"cf04": "04",
-    #"cf05": "05",
-    #"cf06": "06",
-    #"cf07": "07",
-    #"cf08": "08",
+    "cf00": "00",
+    "cf01": "01",
+    "cf02": "02",
+    "cf03": "03",
+    "cf04": "04",
+    "cf05": "05",
+    "cf06": "06",
+    "cf07": "07",
+    "cf08": "08",
     #"cf09": "09",
-    #"cf10": "10",
-    #"cf11": "11"
+    "cf10": "10",
+    #"cf11": "11",
+    "cf12": "E7",
 }
 
 drone_data = {}
@@ -77,9 +78,19 @@ def print_bool(a):
         print(colorama.Back.RED+"FAIL", end='')
 
 def simple_log(drone, scf, logconf):
+    cf = scf.cf
+    cf.param.set_value('sound.effect', int('10'))
+    cf.param.set_value('ring.effect', '7')
+    cf.param.set_value('ring.solidRed', str(255))
+    cf.param.set_value('ring.solidGreen', str(0))
+    cf.param.set_value('ring.solidBlue', str(0))
     print( drone+": "+colorama.Fore.GREEN + "Connected. Press enter and move device", end='')
-    input()
+    #input()
+    print()
     time.sleep(0.8)
+    cf.param.set_value('ring.solidRed', str(0))
+    cf.param.set_value('ring.solidGreen', str(255))
+    cf.param.set_value('ring.solidBlue', str(0))
     with SyncLogger(scf, lg_stab) as logger:
         i = 0
         bat = 0.0
@@ -95,10 +106,15 @@ def simple_log(drone, scf, logconf):
 
             #print('%s: [%d][%s]: %s' % (drone, timestamp, logconf_name, data))
             entries.append((data['stabilizer.roll'], data['stabilizer.pitch'], data['stabilizer.yaw']))
-            i=i+1
-            if i > 90:
-                break
-        print(drone +':'+colorama.Fore.CYAN +' OK (Bat: %s volts)' % (bat))
+            #i=i+1
+            #if i > 150:
+            #    break
+            break
+        cf.param.set_value('ring.effect', '0')
+        bcol = colorama.Fore.GREEN
+        if bat < 3.8:
+            bcol = colorama.Fore.RED
+        print(drone +':'+bcol +' Bat: %s volts' % (round(bat,3)))
         if bat_stat == BatteryStates.LOW_POWER:
             print(colorama.Fore.RED + "Low Battery")
         varis = vari(entries)
@@ -132,13 +148,13 @@ if __name__ == '__main__':
         try:
             with SyncCrazyflie(uri, cf=Crazyflie(rw_cache='./cache')) as scf:
                 simple_log(x, scf, lg_stab)
-            lat_ms = latency(uri, lat_packet_size, lat_count)
-            col=colorama.Fore.GREEN
-            if lat_ms > 10:
-                col=colorama.Fore.RED
-            elif lat_ms > 8:
-                col=colorama.Fore.YELLOW
-            print("Latency: "+col+"%dms" % lat_ms)
+            #lat_ms = latency(uri, lat_packet_size, lat_count)
+            #col=colorama.Fore.GREEN
+            #if lat_ms > 10:
+            #    col=colorama.Fore.RED
+            #elif lat_ms > 8:
+            #    col=colorama.Fore.YELLOW
+            #print("Latency: "+col+"%dms" % lat_ms)
             print("")
         except Exception as e:
             print(colorama.Fore.RED + x+" failed: ", e)

@@ -23,7 +23,6 @@
 #  MA  02110-1301, USA.
 import struct
 import time
-import unittest
 
 import numpy as np
 

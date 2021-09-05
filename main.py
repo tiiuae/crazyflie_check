@@ -11,40 +11,32 @@ from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncLogger import SyncLogger
 import colorama
 
-from lat import latency
-
 from prompt_toolkit import prompt
 from prompt_toolkit.history import FileHistory
 import click
 
+from tomlkit import dumps
+from tomlkit import parse
+
+from prompt_toolkit.shortcuts import checkboxlist_dialog
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.validation import Validator, ValidationError
+from lat import latency
+
 colorama.init(autoreset=True)
-def_uri = "radio://0/"
+DEF_URI = "radio://0/"
 
-drones = {
-    "cf0": ["80/2M/E7E7E7E700", False],
-    "cf1": ["80/2M/E7E7E7E701", False],
-    "cf2": ["80/2M/E7E7E7E702", True],
-    "cf3": ["80/2M/E7E7E7E703", False],
-    "cf4": ["80/2M/E7E7E7E704", False],
-    "cf5": ["80/2M/E7E7E7E705", True],
-    "cf6": ["80/2M/E7E7E7E706", True],
-    "cf7": ["80/2M/E7E7E7E707", True],
-    "cf8": ["80/2M/E7E7E7E708", True],
-    "cf9": ["80/2M/E7E7E7E709", False],
-    "cf10": ["80/2M/E7E7E7E710", True],
-    "cf11": ["80/2M/E7E7E7E711", False],
-    "cf12": ["80/2M/E7E7E7E7E7", True],
-}
-
-drone_data = {}
-
+f = open('drones.toml', 'r')
+drones = parse(f)
 
 logging.basicConfig(level=logging.ERROR)
 
-lat_packet_size=24
-lat_count=500
+LAT_PACKET_SIZE=24
+LAT_COUNT=500
 
-print("Latency settings: packet_size=%d count=%d\n"  % (lat_packet_size, lat_count))
+drone_data = {}
+
+print("Latency settings: packet_size=%d count=%d\n"  % (LAT_PACKET_SIZE, LAT_COUNT))
 
 def vari(a):
     max_roll=-sys.maxsize-1
@@ -67,7 +59,7 @@ def vari(a):
             max_pitch = pitch
         elif min_pitch > pitch:
             min_pitch = pitch
-        
+
         if max_yaw < yaw:
             max_yaw = yaw
         elif min_yaw > yaw:
@@ -96,7 +88,7 @@ def simple_log(drone, scf, lg_stab, rot_test, motor_test):
     time.sleep(1)
     cf.param.set_value('health.startBatTest', int('1'))
     time.sleep(1)
-    
+
     with SyncLogger(scf, lg_stab) as logger:
         i = 0
         bat = 0.0
@@ -159,17 +151,15 @@ def check_drone(drone, lat_test=False, rot_test=False, motor_test=False):
     lg_stab.add_variable('pm.state', 'int8_t')
     lg_stab.add_variable('memTst.errCntW', 'uint32_t')
     #lg_stab.add_variable('deck.bcActiveMarker', 'int8_t')
-    uri = uri_helper.uri_from_env(default=def_uri+drones[drone][0])
+    uri = uri_helper.uri_from_env(default=DEF_URI+drones[drone][0])
     print(uri)
-    
+
     try:
-        print(drone, 'start')
         with SyncCrazyflie(uri, cf=Crazyflie(rw_cache='./cache')) as scf:
             simple_log(drone, scf, lg_stab, rot_test, motor_test)
-        print(drone, 'end')
 
         if lat_test:
-            lat_ms = latency(uri, lat_packet_size, lat_count)
+            lat_ms = latency(uri, LAT_PACKET_SIZE, LAT_COUNT)
             col=colorama.Fore.GREEN
             if lat_ms > 10:
                 col=colorama.Fore.RED
@@ -179,7 +169,6 @@ def check_drone(drone, lat_test=False, rot_test=False, motor_test=False):
     except Exception as e:
         print(colorama.Fore.RED + drone+" failed: ", e)
 
-from prompt_toolkit.shortcuts import checkboxlist_dialog
 
 def cmd_run():
     tests = checkboxlist_dialog(
@@ -191,7 +180,8 @@ def cmd_run():
             ("motor", "Motor power test"),
         ]
     ).run()
-    print(tests)
+    if tests is None:
+        return
     for x in drones:
         if drones[x][1]:
             check_drone(x, 'latency' in tests, 'rot' in tests, 'motor' in tests)
@@ -205,8 +195,6 @@ def cmd_show():
         else:
             print(colorama.Back.RED + "Disabled")
 
-from prompt_toolkit.completion import WordCompleter
-from prompt_toolkit.validation import Validator, ValidationError
 
 
 drone_names = []
@@ -263,9 +251,3 @@ if __name__ == '__main__':
             switch.get(user_input)()
         else:
             print("Unknown command")
-
-
-    #for x in drones:
-    #    check_drone(x, True, True)
-    #    print("")
-

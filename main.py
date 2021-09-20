@@ -37,7 +37,7 @@ def cmd_run():
         values=[
             ("latency", "Latency test"),
             ("rot", "Rotation test"),
-            ("motor", "Motor power test"),
+            ("motor", "Propeller test"),
         ]
     ).run()
     if tests is None:

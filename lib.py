@@ -59,8 +59,8 @@ def print_motor_callback(data):
     if "\n" in data:
         full = console_data + data
         console_data = ""
-        if len(full) > 8 and "HEALTH" in full:
-            print(full, end='')
+        #if len(full) > 8 and "HEALTH" in full:
+        #    print(full, end='')
     else:
         console_data = console_data + data
 
@@ -70,13 +70,14 @@ def simple_log(drone, scf, lg_stab, rot_test, motor_test):
     cf = scf.cf
     cf.console.__init__(cf)
     cf.console.receivedChar.add_callback(print_motor_callback)
-    print( drone+": "+colorama.Fore.GREEN + "Connected.")
-    print(colorama.Fore.CYAN + "(Running battery stress test)")
+    drone_fmt = colorama.Fore.CYAN + "(" + colorama.Fore.YELLOW + drone + colorama.Fore.CYAN + ") " + colorama.Fore.WHITE
+    print(drone_fmt+colorama.Fore.GREEN + "Connected!")
+    print(drone_fmt + colorama.Fore.CYAN + "Running battery stress test...")
     time.sleep(1)
     cf.param.set_value('health.startBatTest', int('1'))
     time.sleep(1)
     if rot_test:
-        print(colorama.Fore.GREEN + "Press enter and move device", end='')
+        print(drone_fmt + colorama.Fore.GREEN + "Press enter and move device", end='')
         input()
         time.sleep(0.8)
 
@@ -106,27 +107,40 @@ def simple_log(drone, scf, lg_stab, rot_test, motor_test):
                 break
         cf.param.set_value('ring.effect', '0')
         if mem_err > 0:
-            print(colorama.Fore.RED + drone + ": Memory error count non-zero: ", mem_err)
+            print(drone_fmt + colorama.Fore.RED + " Memory error count non-zero: ", mem_err)
 
         if motor_test and rot_test:
-            print(colorama.Fore.MAGENTA + "Please place drone on the floor, to run propeller test")
+            print(drone_fmt + colorama.Fore.MAGENTA + "Please place drone on the floor, to run propeller test")
             time.sleep(2.5)
 
         if motor_test:
             time.sleep(2.5)
             cf.param.set_value('health.startPropTest', int('1'))
             time.sleep(5)
+            for log_entry in logger:
+                data = log_entry[1]
+                motors = int(data['health.motorPass'])
+                print(drone_fmt + "M1: ", end='')
+                print_bool(motors & 1)
+                print(", M2: ", end='')
+                print_bool(motors & 1<<1)
+                print(", M3: ", end='')
+                print_bool(motors & 1<<2)
+                print(", M4: ", end='')
+                print_bool(motors & 1<<3)
+                print("")
+                break
 
         bcol = colorama.Fore.GREEN
         if bat < 3.8:
             bcol = colorama.Fore.RED
-        print(drone +':'+bcol +' Bat: %s volts' % (round(bat,3)))
+        print(drone_fmt +bcol +'Bat: %s volts' % (round(bat,3)))
         if bat_stat == BatteryStates.LOW_POWER:
-            print(colorama.Fore.RED + "Low Battery")
+            print(drone_fmt + colorama.Fore.RED + "Low Battery")
         if rot_test:
             varis = vari(entries)
             roll, pitch, yaw = (varis[0] > 20), (varis[1] > 20), (varis[2] > 5)
-            print("Roll: ", end='')
+            print(drone_fmt + "Roll: ", end='')
             print_bool(roll)
             print(", Pitch: ", end='')
             print_bool(pitch)
@@ -153,6 +167,9 @@ def check_drone(drone_name, drone_uri, lat_test=False, rot_test=False, motor_tes
     lg_stab.add_variable('pm.vbat', 'float')
     lg_stab.add_variable('pm.state', 'int8_t')
     lg_stab.add_variable('memTst.errCntW', 'uint32_t')
+    lg_stab.add_variable('health.motorPass', 'uint8_t')
+    lg_stab.add_variable('health.batteryPass', 'uint8_t')
+    #lg_stab.add_variable('health.batterySag', 'float')
     #lg_stab.add_variable('deck.bcActiveMarker', 'int8_t')
     uri = uri_helper.uri_from_env(default=drone_uri)
     print(uri)

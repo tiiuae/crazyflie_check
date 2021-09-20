@@ -12,6 +12,7 @@ from cflib.crazyflie.syncLogger import SyncLogger
 from lat import latency
 
 drone_data = {}
+console_data = ""
 
 LAT_PACKET_SIZE=24
 LAT_COUNT=500
@@ -52,21 +53,33 @@ def print_bool(var):
     else:
         print(colorama.Back.RED+"FAIL", end='')
 
+def print_motor_callback(data):
+    global console_data
+    #print(data, end='')
+    if "\n" in data:
+        full = console_data + data
+        console_data = ""
+        if len(full) > 8 and "HEALTH" in full:
+            print(full, end='')
+    else:
+        console_data = console_data + data
+
+
 def simple_log(drone, scf, lg_stab, rot_test, motor_test):
     """simple_log gets the logging data from the drones."""
     cf = scf.cf
-    print( drone+": "+colorama.Fore.GREEN + "Connected. Press enter and move device", end='')
-    if rot_test:
-        print(colorama.Fore.GREEN + " Press enter and move device", end='')
-        input()
-        time.sleep(0.8)
-    else:
-        print()
-
+    cf.console.__init__(cf)
+    cf.console.receivedChar.add_callback(print_motor_callback)
+    print( drone+": "+colorama.Fore.GREEN + "Connected.")
     print(colorama.Fore.CYAN + "(Running battery stress test)")
     time.sleep(1)
     cf.param.set_value('health.startBatTest', int('1'))
     time.sleep(1)
+    if rot_test:
+        print(colorama.Fore.GREEN + "Press enter and move device", end='')
+        input()
+        time.sleep(0.8)
+
 
     with SyncLogger(scf, lg_stab) as logger:
         i = 0
@@ -95,8 +108,14 @@ def simple_log(drone, scf, lg_stab, rot_test, motor_test):
         if mem_err > 0:
             print(colorama.Fore.RED + drone + ": Memory error count non-zero: ", mem_err)
 
+        if motor_test and rot_test:
+            print(colorama.Fore.MAGENTA + "Please place drone on the floor, to run propeller test")
+            time.sleep(2.5)
+
         if motor_test:
+            time.sleep(2.5)
             cf.param.set_value('health.startPropTest', int('1'))
+            time.sleep(5)
 
         bcol = colorama.Fore.GREEN
         if bat < 3.8:
@@ -114,6 +133,7 @@ def simple_log(drone, scf, lg_stab, rot_test, motor_test):
             print(", Yaw: ", end='')
             print_bool(yaw)
             print("")
+    cf.close_link()
 
 
 

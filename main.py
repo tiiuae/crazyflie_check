@@ -1,5 +1,6 @@
 """This module is a Crazyflie Checker"""
 import logging
+import sys
 
 import cflib.crtp
 
@@ -96,6 +97,9 @@ def cmd_disable():
         for drone in lst:
             drones[drone][1] = False
 
+def cmd_exit():
+    sys.exit(0)
+
 if __name__ == '__main__':
     # Initialize the low-level drivers
     cflib.crtp.init_drivers()
@@ -108,6 +112,9 @@ if __name__ == '__main__':
         "enable": cmd_enable,
         "d": cmd_disable,
         "disable": cmd_disable,
+        "exit": cmd_exit,
+        "quit": cmd_exit,
+        "q": cmd_exit,
     }
     while 1:
         user_input = prompt('> ', history=FileHistory('hist.txt'))

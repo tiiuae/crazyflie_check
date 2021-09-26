@@ -11,7 +11,6 @@ from cflib.crazyflie.syncLogger import SyncLogger
 
 from lat import latency
 
-drone_data = {}
 console_data = ""
 
 LAT_PACKET_SIZE=24
@@ -53,102 +52,114 @@ def print_bool(var):
     else:
         print(colorama.Back.RED+"FAIL", end='')
 
-def print_motor_callback(data):
-    global console_data
-    #print(data, end='')
-    if "\n" in data:
-        full = console_data + data
-        console_data = ""
-        #if len(full) > 8 and "HEALTH" in full:
-        #    print(full, end='')
-    else:
-        console_data = console_data + data
 
-
-def simple_log(drone, scf, lg_stab, rot_test, motor_test):
+def do_check(drone, scf, rot_test, motor_test):
     """simple_log gets the logging data from the drones."""
     cf = scf.cf
-    cf.console.__init__(cf)
-    cf.console.receivedChar.add_callback(print_motor_callback)
     drone_fmt = colorama.Fore.CYAN + "(" + colorama.Fore.YELLOW + drone + colorama.Fore.CYAN + ") " + colorama.Fore.WHITE
     print(drone_fmt+colorama.Fore.GREEN + "Connected!")
+
+    # Disable LED ring to preserve battery
+    cf.param.set_value('ring.effect', '0')
+
+    # Battery test
     print(drone_fmt + colorama.Fore.CYAN + "Running battery stress test...")
     time.sleep(1)
     cf.param.set_value('health.startBatTest', int('1'))
     time.sleep(1)
+
+    # Rotation test
     if rot_test:
         print(drone_fmt + colorama.Fore.GREEN + "Press enter and move device", end='')
         input()
         time.sleep(0.8)
 
-
-    with SyncLogger(scf, lg_stab) as logger:
-        i = 0
-        bat = 0.0
-        bat_stat = 0
-        mem_err = -1
         entries = [ ]
-        for log_entry in logger:
-            #timestamp = log_entry[0]
-            data = log_entry[1]
-            #logconf_name = log_entry[2]
-            drone_data[drone] = data
-            bat = data['pm.vbat']
-            bat_stat = data['pm.state']
-            mem_err = data['memTst.errCntW']
-
-            #print('%s: [%d][%s]: %s' % (drone, timestamp, logconf_name, data))
-            if rot_test:
+        lg_stab = LogConfig(name='Stabilizer', period_in_ms=10)
+        lg_stab.add_variable('stabilizer.roll', 'float')
+        lg_stab.add_variable('stabilizer.pitch', 'float')
+        lg_stab.add_variable('stabilizer.yaw', 'float')
+        with SyncLogger(scf, lg_stab) as logger:
+            i = 0
+            for log_entry in logger:
+                data = log_entry[1]
                 entries.append((data['stabilizer.roll'], data['stabilizer.pitch'],
                     data['stabilizer.yaw']))
 
-            i=i+1
-            if i > 150:
-                break
-        cf.param.set_value('ring.effect', '0')
-        if mem_err > 0:
-            print(drone_fmt + colorama.Fore.RED + " Memory error count non-zero: ", mem_err)
-
-        if motor_test and rot_test:
+                i=i+1
+                if i > 150:
+                    break
+        varis = vari(entries)
+        roll, pitch, yaw = (varis[0] > 20), (varis[1] > 20), (varis[2] > 5)
+        print(drone_fmt + "Roll: ", end='')
+        print_bool(roll)
+        print(", Pitch: ", end='')
+        print_bool(pitch)
+        print(", Yaw: ", end='')
+        print_bool(yaw)
+        print("")
+        if motor_test:
             print(drone_fmt + colorama.Fore.MAGENTA + "Please place drone on the floor, to run propeller test")
             time.sleep(2.5)
 
-        if motor_test:
-            time.sleep(2.5)
-            cf.param.set_value('health.startPropTest', int('1'))
-            time.sleep(5)
-            for log_entry in logger:
-                data = log_entry[1]
-                motors = int(data['health.motorPass'])
-                print(drone_fmt + "M1: ", end='')
-                print_bool(motors & 1)
-                print(", M2: ", end='')
-                print_bool(motors & 1<<1)
-                print(", M3: ", end='')
-                print_bool(motors & 1<<2)
-                print(", M4: ", end='')
-                print_bool(motors & 1<<3)
-                print("")
-                break
+    # Motor test
+    if motor_test:
+        time.sleep(2.5)
+        cf.param.set_value('health.startPropTest', int('1'))
+        time.sleep(5)
 
-        bcol = colorama.Fore.GREEN
-        if bat < 3.8:
-            bcol = colorama.Fore.RED
-        print(drone_fmt +bcol +'Bat: %s volts' % (round(bat,3)))
-        if bat_stat == BatteryStates.LOW_POWER:
-            print(drone_fmt + colorama.Fore.RED + "Low Battery")
-        if rot_test:
-            varis = vari(entries)
-            roll, pitch, yaw = (varis[0] > 20), (varis[1] > 20), (varis[2] > 5)
-            print(drone_fmt + "Roll: ", end='')
-            print_bool(roll)
-            print(", Pitch: ", end='')
-            print_bool(pitch)
-            print(", Yaw: ", end='')
-            print_bool(yaw)
-            print("")
-    cf.close_link()
+    # Health test (battery, motor, memory, etc)
+    lg_health = LogConfig(name='Health', period_in_ms=100)
+    lg_health.add_variable('pm.vbat', 'float')
+    lg_health.add_variable('pm.state', 'int8_t')
+    lg_health.add_variable('memTst.errCntW', 'uint32_t')
+    lg_health.add_variable('health.motorPass', 'uint8_t')
+    lg_health.add_variable('health.batteryPass', 'uint8_t')
+    lg_health.add_variable('health.batterySag', 'float')
+    lg_health.add_variable('sys.isTumbled', 'uint8_t')
+    lg_health.add_variable('deck.bcActiveMarker', 'int8_t')
 
+    bat = 0.0
+    bat_stat = 0
+    bat_sag = 0.0
+    bat_pass = 0
+    mem_err = -1
+    motors = 0
+
+    time.sleep(3) # Some tests might not have updated the log variables.
+    with SyncLogger(scf, lg_health) as logger:
+        i = 0
+        entries = [ ]
+        for log_entry in logger:
+            data = log_entry[1]
+            bat = data['pm.vbat']
+            bat_stat = data['pm.state']
+            bat_sag = data['health.batterySag']
+            bat_pass = data['health.batteryPass']
+            mem_err = data['memTst.errCntW']
+            motors = int(data['health.motorPass'])
+            break
+
+    if mem_err > 0:
+        print(drone_fmt + colorama.Fore.RED + " Memory error count non-zero: ", mem_err)
+
+    if motor_test:
+        print(drone_fmt + "M1: ", end='')
+        print_bool(motors & 1)
+        print(", M2: ", end='')
+        print_bool(motors & 1<<1)
+        print(", M3: ", end='')
+        print_bool(motors & 1<<2)
+        print(", M4: ", end='')
+        print_bool(motors & 1<<3)
+        print("")
+
+    bcol = colorama.Fore.GREEN
+    if bat < 3.8:
+        bcol = colorama.Fore.RED
+    print(drone_fmt +bcol +'Bat: %s volts' % (round(bat,3)))
+    if bat_stat == BatteryStates.LOW_POWER:
+        print(drone_fmt + colorama.Fore.RED + "Low Battery (battery state)")
 
 
 class BatteryStates:
@@ -159,24 +170,11 @@ class BatteryStates:
 
 def check_drone(drone_name, drone_uri, lat_test=False, rot_test=False, motor_test=False):
     """check_drone checks a specific drone."""
-    lg_stab = LogConfig(name='Stabilizer', period_in_ms=10)
-    if rot_test:
-        lg_stab.add_variable('stabilizer.roll', 'float')
-        lg_stab.add_variable('stabilizer.pitch', 'float')
-        lg_stab.add_variable('stabilizer.yaw', 'float')
-    lg_stab.add_variable('pm.vbat', 'float')
-    lg_stab.add_variable('pm.state', 'int8_t')
-    lg_stab.add_variable('memTst.errCntW', 'uint32_t')
-    lg_stab.add_variable('health.motorPass', 'uint8_t')
-    lg_stab.add_variable('health.batteryPass', 'uint8_t')
-    #lg_stab.add_variable('health.batterySag', 'float')
-    #lg_stab.add_variable('deck.bcActiveMarker', 'int8_t')
     uri = uri_helper.uri_from_env(default=drone_uri)
-    print(uri)
 
     try:
         with SyncCrazyflie(uri, cf=Crazyflie(rw_cache='./cache')) as scf:
-            simple_log(drone_name, scf, lg_stab, rot_test, motor_test)
+            do_check(drone_name, scf, rot_test, motor_test)
 
         if lat_test:
             lat_ms = latency(uri, LAT_PACKET_SIZE, LAT_COUNT)

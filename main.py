@@ -15,6 +15,7 @@ from prompt_toolkit.validation import Validator, ValidationError
 from tomlkit import parse
 
 from lib import check_drone
+from qualisys import check_qtm
 
 colorama.init(autoreset=True)
 
@@ -97,6 +98,9 @@ def cmd_disable():
         for drone in lst:
             drones[drone][1] = False
 
+def cmd_qtm():
+    check_qtm()
+
 def cmd_exit():
     sys.exit(0)
 
@@ -112,6 +116,7 @@ if __name__ == '__main__':
         "enable": cmd_enable,
         "d": cmd_disable,
         "disable": cmd_disable,
+        "qtm": cmd_qtm,
         "exit": cmd_exit,
         "quit": cmd_exit,
         "q": cmd_exit,
